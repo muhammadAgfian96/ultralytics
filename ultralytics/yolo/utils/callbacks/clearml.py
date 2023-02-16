@@ -51,15 +51,16 @@ def _log_plot(title, plot_path):
 
 def on_pretrain_routine_start(trainer):
     # TODO: reuse existing task
-    task = Task.init(project_name=trainer.args.project or "YOLOv8",
-                     task_name=trainer.args.name,
-                     tags=['YOLOv8'],
-                     output_uri=True,
-                     reuse_last_task_id=False,
-                     auto_connect_frameworks={
-                         'pytorch': False,
-                         'matplotlib': False})
-    task.connect(dict(trainer.args), name='General')
+    # task = Task.init(project_name=trainer.args.project or "YOLOv8",
+    #                  task_name=trainer.args.name,
+    #                  tags=['YOLOv8'],
+    #                  output_uri=True,
+    #                  reuse_last_task_id=False,
+    #                  auto_connect_frameworks={
+    #                      'pytorch': False,
+    #                      'matplotlib': False})
+    # Task.current_task().connect(dict(trainer.args), name='General')
+    pass
 
 
 def on_train_epoch_end(trainer):
