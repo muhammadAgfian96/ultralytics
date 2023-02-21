@@ -9,8 +9,8 @@ from ultralytics.yolo.utils.torch_utils import get_flops, get_num_params
 try:
     import clearml
     from clearml import Task
-
-    assert hasattr(clearml, '__version__')
+    assert clearml.__version__  # verify package is not directory
+    assert not TESTS_RUNNING  # do not log pytest
 except (ImportError, AssertionError):
     clearml = None
 
@@ -61,7 +61,6 @@ def on_pretrain_routine_start(trainer):
     #                      'matplotlib': False})
     # Task.current_task().connect(dict(trainer.args), name='General')
     pass
-
 
 def on_train_epoch_end(trainer):
     if trainer.epoch == 1:

@@ -1,9 +1,12 @@
+from copy import deepcopy
 from functools import lru_cache
 
 import numpy as np
 import torch
+import torchvision.transforms.functional as F
 
 from ultralytics.yolo.utils import LOGGER, ops
+from ultralytics.yolo.utils.plotting import Annotator, colors
 
 
 class Results:
@@ -14,38 +17,49 @@ class Results:
             boxes (Boxes, optional): A Boxes object containing the detection bounding boxes.
             masks (Masks, optional): A Masks object containing the detection masks.
             probs (torch.Tensor, optional): A tensor containing the detection class probabilities.
-            orig_shape (tuple, optional): Original image size.
+            orig_img (tuple, optional): Original image size.
 
         Attributes:
             boxes (Boxes, optional): A Boxes object containing the detection bounding boxes.
             masks (Masks, optional): A Masks object containing the detection masks.
             probs (torch.Tensor, optional): A tensor containing the detection class probabilities.
-            orig_shape (tuple, optional): Original image size.
+            orig_img (tuple, optional): Original image size.
             data (torch.Tensor): The raw masks tensor
 
         """
 
-    def __init__(self, boxes=None, masks=None, probs=None, orig_shape=None) -> None:
-        self.boxes = Boxes(boxes, orig_shape) if boxes is not None else None  # native size boxes
-        self.masks = Masks(masks, orig_shape) if masks is not None else None  # native size or imgsz masks
+    def __init__(self, orig_img, path, names, boxes=None, masks=None, probs=None) -> None:
+        self.orig_img = orig_img
+        self.orig_shape = orig_img.shape[:2]
+        self.boxes = Boxes(boxes, self.orig_shape) if boxes is not None else None  # native size boxes
+        self.masks = Masks(masks, self.orig_shape) if masks is not None else None  # native size or imgsz masks
         self.probs = probs if probs is not None else None
-        self.orig_shape = orig_shape
-        self.comp = ["boxes", "masks", "probs"]
+        self.names = names
+        self.path = path
+        self.comp = ['boxes', 'masks', 'probs']
 
     def pandas(self):
         pass
         # TODO masks.pandas + boxes.pandas + cls.pandas
 
     def __getitem__(self, idx):
-        r = Results(orig_shape=self.orig_shape)
+        r = Results(orig_img=self.orig_img, path=self.path, names=self.names)
         for item in self.comp:
             if getattr(self, item) is None:
                 continue
             setattr(r, item, getattr(self, item)[idx])
         return r
 
+    def update(self, boxes=None, masks=None, probs=None):
+        if boxes is not None:
+            self.boxes = Boxes(boxes, self.orig_shape)
+        if masks is not None:
+            self.masks = Masks(masks, self.orig_shape)
+        if boxes is not None:
+            self.probs = probs
+
     def cpu(self):
-        r = Results(orig_shape=self.orig_shape)
+        r = Results(orig_img=self.orig_img, path=self.path, names=self.names)
         for item in self.comp:
             if getattr(self, item) is None:
                 continue
@@ -53,7 +67,7 @@ class Results:
         return r
 
     def numpy(self):
-        r = Results(orig_shape=self.orig_shape)
+        r = Results(orig_img=self.orig_img, path=self.path, names=self.names)
         for item in self.comp:
             if getattr(self, item) is None:
                 continue
@@ -61,7 +75,7 @@ class Results:
         return r
 
     def cuda(self):
-        r = Results(orig_shape=self.orig_shape)
+        r = Results(orig_img=self.orig_img, path=self.path, names=self.names)
         for item in self.comp:
             if getattr(self, item) is None:
                 continue
@@ -69,7 +83,7 @@ class Results:
         return r
 
     def to(self, *args, **kwargs):
-        r = Results(orig_shape=self.orig_shape)
+        r = Results(orig_img=self.orig_img, path=self.path, names=self.names)
         for item in self.comp:
             if getattr(self, item) is None:
                 continue
@@ -83,7 +97,7 @@ class Results:
             return len(getattr(self, item))
 
     def __str__(self):
-        str_out = ""
+        str_out = ''
         for item in self.comp:
             if getattr(self, item) is None:
                 continue
@@ -91,7 +105,7 @@ class Results:
         return str_out
 
     def __repr__(self):
-        str_out = ""
+        str_out = ''
         for item in self.comp:
             if getattr(self, item) is None:
                 continue
@@ -109,6 +123,40 @@ class Results:
                 probs (torch.Tensor, optional): A tensor containing the detection class probabilities.
                 orig_shape (tuple, optional): Original image size.
             """)
+
+    def plot(self, show_conf=True, line_width=None, font_size=None, font='Arial.ttf', pil=False, example='abc'):
+        """
+        Plots the given result on an input RGB image. Accepts cv2(numpy) or PIL Image
+
+        Args:
+            show_conf (bool): Show confidence
+            line_width (Float): The line width of boxes. Automatically scaled to img size if not provided
+            font_size (Float): The font size of . Automatically scaled to img size if not provided
+        """
+        img = deepcopy(self.orig_img)
+        annotator = Annotator(img, line_width, font_size, font, pil, example)
+        boxes = self.boxes
+        masks = self.masks
+        logits = self.probs
+        names = self.names
+        if boxes is not None:
+            for d in reversed(boxes):
+                cls, conf = d.cls.squeeze(), d.conf.squeeze()
+                c = int(cls)
+                label = (f'{names[c]}' if names else f'{c}') + (f'{conf:.2f}' if show_conf else '')
+                annotator.box_label(d.xyxy.squeeze(), label, color=colors(c, True))
+
+        if masks is not None:
+            im = torch.as_tensor(img, dtype=torch.float16, device=masks.data.device).permute(2, 0, 1).flip(0)
+            im = F.resize(im.contiguous(), masks.data.shape[1:]) / 255
+            annotator.masks(masks.data, colors=[colors(x, True) for x in boxes.cls], im_gpu=im)
+
+        if logits is not None:
+            top5i = logits.argsort(0, descending=True)[:5].tolist()  # top 5 indices
+            text = f"{', '.join(f'{names[j] if names else j} {logits[j]:.2f}' for j in top5i)}, "
+            annotator.text((32, 32), text, txt_color=(255, 255, 255))  # TODO: allow setting colors
+
+        return img
 
 
 class Boxes:
@@ -138,7 +186,10 @@ class Boxes:
     def __init__(self, boxes, orig_shape) -> None:
         if boxes.ndim == 1:
             boxes = boxes[None, :]
-        assert boxes.shape[-1] == 6  # xyxy, conf, cls
+        n = boxes.shape[-1]
+        assert n in {6, 7}, f'expected `n` in [6, 7], but got {n}'  # xyxy, (track_id), conf, cls
+        # TODO
+        self.is_track = n == 7
         self.boxes = boxes
         self.orig_shape = torch.as_tensor(orig_shape, device=boxes.device) if isinstance(boxes, torch.Tensor) \
             else np.asarray(orig_shape)
@@ -154,6 +205,10 @@ class Boxes:
     @property
     def cls(self):
         return self.boxes[:, -1]
+
+    @property
+    def id(self):
+        return self.boxes[:, -3] if self.is_track else None
 
     @property
     @lru_cache(maxsize=2)  # maxsize 1 should suffice
@@ -213,8 +268,8 @@ class Boxes:
         return self.boxes.__str__()
 
     def __repr__(self):
-        return (f"Ultralytics YOLO {self.__class__} masks\n" + f"type: {type(self.boxes)}\n" +
-                f"shape: {self.boxes.shape}\n" + f"dtype: {self.boxes.dtype}\n + {self.boxes.__repr__()}")
+        return (f'Ultralytics YOLO {self.__class__} masks\n' + f'type: {type(self.boxes)}\n' +
+                f'shape: {self.boxes.shape}\n' + f'dtype: {self.boxes.dtype}\n + {self.boxes.__repr__()}')
 
     def __getitem__(self, idx):
         boxes = self.boxes[idx]
@@ -298,12 +353,12 @@ class Masks:
         return self.masks.__str__()
 
     def __repr__(self):
-        return (f"Ultralytics YOLO {self.__class__} masks\n" + f"type: {type(self.masks)}\n" +
-                f"shape: {self.masks.shape}\n" + f"dtype: {self.masks.dtype}\n + {self.masks.__repr__()}")
+        return (f'Ultralytics YOLO {self.__class__} masks\n' + f'type: {type(self.masks)}\n' +
+                f'shape: {self.masks.shape}\n' + f'dtype: {self.masks.dtype}\n + {self.masks.__repr__()}')
 
     def __getitem__(self, idx):
         masks = self.masks[idx]
-        return Masks(masks, self.im_shape, self.orig_shape)
+        return Masks(masks, self.orig_shape)
 
     def __getattr__(self, attr):
         name = self.__class__.__name__
@@ -317,24 +372,3 @@ class Masks:
             Properties:
                 segments (list): A list of segments which includes x,y,w,h,label,confidence, and mask of each detection masks.
             """)
-
-
-if __name__ == "__main__":
-    # test examples
-    results = Results(boxes=torch.randn((2, 6)), masks=torch.randn((2, 160, 160)), orig_shape=[640, 640])
-    results = results.cuda()
-    print("--cuda--pass--")
-    results = results.cpu()
-    print("--cpu--pass--")
-    results = results.to("cuda:0")
-    print("--to-cuda--pass--")
-    results = results.to("cpu")
-    print("--to-cpu--pass--")
-    results = results.numpy()
-    print("--numpy--pass--")
-    # box = Boxes(boxes=torch.randn((2, 6)), orig_shape=[5, 5])
-    # box = box.cuda()
-    # box = box.cpu()
-    # box = box.numpy()
-    # for b in box:
-    #     print(b)
