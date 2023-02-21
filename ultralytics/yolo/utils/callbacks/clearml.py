@@ -93,10 +93,10 @@ def on_train_end(trainer):
         for k, v in trainer.validator.metrics.results_dict.items()]
     # Log the final model
     Task.current_task().update_output_model(model_path=str(trainer.best),
-                                            model_name=trainer.args.name,
+                                            model_name='best-'+trainer.args.name,
                                             auto_delete_file=False)
     Task.current_task().update_output_model(model_path=str(trainer.last),
-                                            model_name='latest',
+                                            model_name='latest-'+trainer.args.name,
                                             auto_delete_file=False)
 
 
