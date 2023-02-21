@@ -95,6 +95,9 @@ def on_train_end(trainer):
     Task.current_task().update_output_model(model_path=str(trainer.best),
                                             model_name=trainer.args.name,
                                             auto_delete_file=False)
+    Task.current_task().update_output_model(model_path=str(trainer.last),
+                                            model_name='latest',
+                                            auto_delete_file=False)
 
 
 callbacks = {
