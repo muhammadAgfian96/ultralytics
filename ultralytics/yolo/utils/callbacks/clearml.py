@@ -3,6 +3,9 @@ import re
 
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
+import os
+import yaml
+from yaml.loader import SafeLoader
 
 from ultralytics.yolo.utils.torch_utils import get_flops, get_num_params
 
@@ -60,6 +63,11 @@ def on_pretrain_routine_start(trainer):
     #                      'pytorch': False,
     #                      'matplotlib': False})
     # Task.current_task().connect(dict(trainer.args), name='General')
+    print('data_yaml from training', os.path.join(trainer.args['data']))
+    with open(os.path.join(trainer.args['data']), 'r') as f:
+        data_yaml = yaml.load(f, Loader=SafeLoader)
+    Task.current_task().set_model_label_enumeration({lbl:idx for idx, lbl in enumerate(data_yaml['names'])})
+    # Task.current_task().set_model_config(config_text=None, config_dict=None)
     pass
 
 def on_train_epoch_end(trainer):
@@ -91,7 +99,10 @@ def on_train_end(trainer):
     [
         Task.current_task().get_logger().report_single_value(k, v)
         for k, v in trainer.validator.metrics.results_dict.items()]
+    
     # Log the final model
+
+
     Task.current_task().update_output_model(model_path=str(trainer.best),
                                             model_name='best-'+trainer.args.name,
                                             auto_delete_file=False)
