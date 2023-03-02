@@ -76,7 +76,7 @@ def on_fit_epoch_end(trainer):
             model_info = {
                 'model/parameters': get_num_params(trainer.model),
                 'model/GFLOPs': round(get_flops(trainer.model), 3),
-                'model/speed(ms)': round(trainer.validator.speed['inference'], 3)
+                'model/inference_speed(ms)': round(trainer.validator.speed['inference'], 3)
             }
         except Exception as e:
             print(e)
