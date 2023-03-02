@@ -2,12 +2,14 @@
 
 import torch
 
-from ultralytics.tracker import BOTSORT, BYTETracker
 from ultralytics.yolo.utils import IterableSimpleNamespace, yaml_load
 from ultralytics.yolo.utils.checks import check_requirements, check_yaml
 
-TRACKER_MAP = {'bytetrack': BYTETracker, 'botsort': BOTSORT}
 check_requirements('lap')  # for linear_assignment
+
+from .trackers import BOTSORT, BYTETracker
+
+TRACKER_MAP = {'bytetrack': BYTETracker, 'botsort': BOTSORT}
 
 
 def on_predict_start(predictor):

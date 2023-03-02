@@ -7,13 +7,14 @@ import os
 import yaml
 from yaml.loader import SafeLoader
 
+from ultralytics.yolo.utils import LOGGER, TESTS_RUNNING
 from ultralytics.yolo.utils.torch_utils import get_flops, get_num_params
 
 try:
     import clearml
     from clearml import Task
     assert clearml.__version__  # verify package is not directory
-    # assert not TESTS_RUNNING  # do not log pytest
+    assert not TESTS_RUNNING  # do not log pytest
 except (ImportError, AssertionError):
     clearml = None
 
@@ -51,18 +52,7 @@ def _log_plot(title, plot_path):
 
     Task.current_task().get_logger().report_matplotlib_figure(title, "", figure=fig, report_interactive=False)
 
-
 def on_pretrain_routine_start(trainer):
-    # TODO: reuse existing task
-    # task = Task.init(project_name=trainer.args.project or "YOLOv8",
-    #                  task_name=trainer.args.name,
-    #                  tags=['YOLOv8'],
-    #                  output_uri=True,
-    #                  reuse_last_task_id=False,
-    #                  auto_connect_frameworks={
-    #                      'pytorch': False,
-    #                      'matplotlib': False})
-    # Task.current_task().connect(dict(trainer.args), name='General')
     print('data_yaml from training', os.path.join(trainer.args['data']))
     with open(os.path.join(trainer.args['data']), 'r') as f:
         data_yaml = yaml.load(f, Loader=SafeLoader)
@@ -77,18 +67,21 @@ def on_train_epoch_end(trainer):
 
 def on_fit_epoch_end(trainer):
     # You should have access to the validation bboxes under jdict
+    Task.current_task().get_logger().report_scalar('Epoch Time',
+                                               'Epoch Time',
+                                               trainer.epoch_time,
+                                               iteration=trainer.epoch)
     if trainer.epoch == 0:
         model_info = {
-            "Parameters": get_num_params(trainer.model),
-            "GFLOPs": round(get_flops(trainer.model), 3),
-            "Inference speed (ms/img)": round(trainer.validator.speed[1], 3)}
+            'model/parameters': get_num_params(trainer.model),
+            'model/GFLOPs': round(get_flops(trainer.model), 3),
+            'model/speed(ms)': round(trainer.validator.speed['inference'], 3)}
+        task.connect(model_info, name='Model')
         [Task.current_task().get_logger().report_single_value(k, v) for k, v in model_info.items()]
-
 
 def on_val_end(validator):
     # Log val_labels and val_pred
     _log_debug_samples(sorted(validator.save_dir.glob('val*.jpg')), "Validation")
-
 
 def on_train_end(trainer):
     # Log final results, CM matrix + PR plots
@@ -101,8 +94,6 @@ def on_train_end(trainer):
         for k, v in trainer.validator.metrics.results_dict.items()]
     
     # Log the final model
-
-
     Task.current_task().update_output_model(model_path=str(trainer.best),
                                             model_name='best-'+trainer.args.name,
                                             auto_delete_file=False)

@@ -59,7 +59,7 @@ def DDP_model(model):
         return DDP(model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK)
 
 
-def select_device(device='', batch=0, newline=False):
+def select_device(device='', batch=0, newline=False, verbose=True):
     # device = None or 'cpu' or 0 or '0' or '0,1,2,3'
     s = f'Ultralytics YOLOv{__version__} 🚀 Python-{platform.python_version()} torch-{torch.__version__} '
     device = str(device).lower()
@@ -102,7 +102,7 @@ def select_device(device='', batch=0, newline=False):
         s += 'CPU\n'
         arg = 'cpu'
 
-    if RANK == -1:
+    if verbose and RANK == -1:
         LOGGER.info(s if newline else s.rstrip())
     return torch.device(arg)
 
@@ -195,7 +195,7 @@ def get_flops(model, imgsz=640):
         p = next(model.parameters())
         stride = max(int(model.stride.max()), 32) if hasattr(model, 'stride') else 32  # max stride
         im = torch.empty((1, p.shape[1], stride, stride), device=p.device)  # input image in BCHW format
-        flops = thop.profile(deepcopy(model), inputs=(im,), verbose=False)[0] / 1E9 * 2  # stride GFLOPs
+        flops = thop.profile(deepcopy(model), inputs=[im], verbose=False)[0] / 1E9 * 2  # stride GFLOPs
         imgsz = imgsz if isinstance(imgsz, list) else [imgsz, imgsz]  # expand if int/float
         flops = flops * imgsz[0] / stride * imgsz[1] / stride  # 640x640 GFLOPs
         return flops
@@ -374,7 +374,7 @@ def profile(input, ops, n=10, device=None):
             m = m.half() if hasattr(m, 'half') and isinstance(x, torch.Tensor) and x.dtype is torch.float16 else m
             tf, tb, t = 0, 0, [0, 0, 0]  # dt forward, backward
             try:
-                flops = thop.profile(m, inputs=(x,), verbose=False)[0] / 1E9 * 2  # GFLOPs
+                flops = thop.profile(m, inputs=[x], verbose=False)[0] / 1E9 * 2  # GFLOPs
             except Exception:
                 flops = 0
 
