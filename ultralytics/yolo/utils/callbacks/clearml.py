@@ -72,11 +72,19 @@ def on_fit_epoch_end(trainer):
                                                trainer.epoch_time,
                                                iteration=trainer.epoch)
     if trainer.epoch == 0:
-        model_info = {
-            'model/parameters': get_num_params(trainer.model),
-            'model/GFLOPs': round(get_flops(trainer.model), 3),
-            'model/speed(ms)': round(trainer.validator.speed['inference'], 3)}
-        task.connect(model_info, name='Model')
+        try:
+            model_info = {
+                'model/parameters': get_num_params(trainer.model),
+                'model/GFLOPs': round(get_flops(trainer.model), 3),
+                'model/speed(ms)': round(trainer.validator.speed['inference'], 3)
+            }
+        except Exception as e:
+            print(e)
+            model_info = {
+                'Parameters': get_num_params(trainer.model),
+                'GFLOPs': round(get_flops(trainer.model), 3),
+                'Inference speed (ms/img)': round(trainer.validator.speed[1], 3)}
+        # Task.current_task().connect(model_info, name='Model')
         [Task.current_task().get_logger().report_single_value(k, v) for k, v in model_info.items()]
 
 def on_val_end(validator):
