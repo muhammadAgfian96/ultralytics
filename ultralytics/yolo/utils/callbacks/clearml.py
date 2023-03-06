@@ -53,7 +53,7 @@ def _log_plot(title, plot_path):
     Task.current_task().get_logger().report_matplotlib_figure(title, "", figure=fig, report_interactive=False)
 
 def on_pretrain_routine_start(trainer):
-    print('data_yaml from training', os.path.join(trainer.args['data']))
+    print('data_yaml from training', os.path.join(trainer.data))
     with open(os.path.join(trainer.args['data']), 'r') as f:
         data_yaml = yaml.load(f, Loader=SafeLoader)
     Task.current_task().set_model_label_enumeration({lbl:idx for idx, lbl in enumerate(data_yaml['names'])})
