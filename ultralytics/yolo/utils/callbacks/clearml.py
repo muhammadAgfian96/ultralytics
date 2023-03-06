@@ -50,19 +50,16 @@ def _log_plot(title, plot_path):
     ax = fig.add_axes([0, 0, 1, 1], frameon=False, aspect='auto', xticks=[], yticks=[])  # no ticks
     ax.imshow(img)
 
-    Task.current_task().get_logger().report_matplotlib_figure(title, "", figure=fig, report_interactive=False)
+    Task.current_task().get_logger().report_matplotlib_figure(title, '', figure=fig, report_interactive=False)
 
 def on_pretrain_routine_start(trainer):
-    print('data_yaml from training', os.path.join(trainer.data))
-    with open(os.path.join(trainer.args['data']), 'r') as f:
-        data_yaml = yaml.load(f, Loader=SafeLoader)
-    Task.current_task().set_model_label_enumeration({lbl:idx for idx, lbl in enumerate(data_yaml['names'])})
-    # Task.current_task().set_model_config(config_text=None, config_dict=None)
-    pass
+    print('trainier', trainer.__dict__)
+    print('data_yaml from training', trainer.data)
+    Task.current_task().set_model_label_enumeration({cls_name:idx for idx, cls_name in trainer.data['names'].items()})
 
 def on_train_epoch_end(trainer):
     if trainer.epoch == 1:
-        _log_debug_samples(sorted(trainer.save_dir.glob('train_batch*.jpg')), "Mosaic")
+        _log_debug_samples(sorted(trainer.save_dir.glob('train_batch*.jpg')), 'Mosaic')
 
 
 def on_fit_epoch_end(trainer):
@@ -89,7 +86,7 @@ def on_fit_epoch_end(trainer):
 
 def on_val_end(validator):
     # Log val_labels and val_pred
-    _log_debug_samples(sorted(validator.save_dir.glob('val*.jpg')), "Validation")
+    _log_debug_samples(sorted(validator.save_dir.glob('val*.jpg')), 'Validation')
 
 def on_train_end(trainer):
     # Log final results, CM matrix + PR plots
