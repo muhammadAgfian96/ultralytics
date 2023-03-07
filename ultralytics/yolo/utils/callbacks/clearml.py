@@ -88,11 +88,19 @@ def on_fit_epoch_end(trainer):
 
 def on_val_end(validator):
     # Log val_labels and val_pred
-    _log_debug_samples(sorted(validator.save_dir.glob('val*.jpg')), 'Validation')
+    _log_debug_samples(sorted(validator.save_dir.glob('val_batch*.jpg')), 'Validation')
 
 def on_train_end(trainer):
     # Log final results, CM matrix + PR plots
-    files = ['results.png', 'confusion_matrix.png', *(f'{x}_curve.png' for x in ('F1', 'PR', 'P', 'R'))]
+    files = [
+        'results.png', 
+        'confusion_matrix.png',
+        'labels_correlogram.jpg',
+        'labels.jpg',
+        *(f'{x}_curve.png' for x in ('F1', 'PR', 'P', 'R')),
+        *(f'{x}_curve.png' for x in ('BoxF1', 'BoxPR', 'BoxP', 'BoxR')),
+        *(f'{x}_curve.png' for x in ('MaskF1', 'MaskPR', 'MaskP', 'MaskR')),
+        ]
     files = [(trainer.save_dir / f) for f in files if (trainer.save_dir / f).exists()]  # filter
     [_log_plot(title=f.stem, plot_path=f) for f in files]
     # Report final metrics
