@@ -53,9 +53,9 @@ def _log_plot(title, plot_path):
     Task.current_task().get_logger().report_matplotlib_figure(title, '', figure=fig, report_interactive=False)
 
 def on_pretrain_routine_start(trainer):
-    d_copy = trainer.__dict__.copy()
-    del d_copy['model']
-    print('trainier.args', d_copy)
+    # d_copy = trainer.__dict__.copy()
+    # del d_copy['model']
+    # print('trainier.args', d_copy)
     print('data_yaml from training', trainer.data)
     Task.current_task().set_model_label_enumeration({cls_name:idx for idx, cls_name in trainer.data['names'].items()})
 
