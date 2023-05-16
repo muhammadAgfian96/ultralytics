@@ -1,8 +1,8 @@
-# Ultralytics YOLO 🚀, GPL-3.0 license
+# Ultralytics YOLO 🚀, AGPL-3.0 license
 # COCO128 dataset https://www.kaggle.com/ultralytics/coco128 (first 128 images from COCO train2017) by Ultralytics
 # Example usage: yolo train data=coco128.yaml
 # parent
-# ├── yolov5
+# ├── ultralytics
 # └── datasets
 #     └── coco128  ← downloads here (7 MB)
 

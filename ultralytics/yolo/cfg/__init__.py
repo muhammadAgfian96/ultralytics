@@ -1,4 +1,4 @@
-# Ultralytics YOLO 🚀, GPL-3.0 license
+# Ultralytics YOLO 🚀, AGPL-3.0 license
 import contextlib
 import re
 import shutil
@@ -9,7 +9,22 @@ from types import SimpleNamespace
 from typing import Dict, List, Union
 
 from ultralytics.yolo.utils import (DEFAULT_CFG, DEFAULT_CFG_DICT, DEFAULT_CFG_PATH, LOGGER, ROOT, USER_CONFIG_DIR,
-                                    IterableSimpleNamespace, __version__, checks, colorstr, yaml_load, yaml_print)
+                                    IterableSimpleNamespace, __version__, checks, colorstr, deprecation_warn,
+                                    get_settings, yaml_load, yaml_print)
+
+# Define valid tasks and modes
+MODES = 'train', 'val', 'predict', 'export', 'track', 'benchmark'
+TASKS = 'detect', 'segment', 'classify', 'pose'
+TASK2DATA = {
+    'detect': 'coco128.yaml',
+    'segment': 'coco128-seg.yaml',
+    'classify': 'imagenet100',
+    'pose': 'coco8-pose.yaml'}
+TASK2MODEL = {
+    'detect': 'yolov8n.pt',
+    'segment': 'yolov8n-seg.pt',
+    'classify': 'yolov8n-cls.pt',
+    'pose': 'yolov8n-pose.pt'}
 
 CLI_HELP_MSG = \
     f"""
@@ -17,10 +32,10 @@ CLI_HELP_MSG = \
 
         yolo TASK MODE ARGS
 
-        Where   TASK (optional) is one of [detect, segment, classify]
-                MODE (required) is one of [train, val, predict, export, track]
+        Where   TASK (optional) is one of {TASKS}
+                MODE (required) is one of {MODES}
                 ARGS (optional) are any number of custom 'arg=value' pairs like 'imgsz=320' that override defaults.
-                    See all ARGS at https://docs.ultralytics.com/cfg or with 'yolo cfg'
+                    See all ARGS at https://docs.ultralytics.com/usage/cfg or with 'yolo cfg'
 
     1. Train a detection model for 10 epochs with an initial learning_rate of 0.01
         yolo train data=coco128.yaml model=yolov8n.pt epochs=10 lr0=0.01
@@ -42,27 +57,22 @@ CLI_HELP_MSG = \
         yolo copy-cfg
         yolo cfg
 
-    Docs: https://docs.ultralytics.com/cli
+    Docs: https://docs.ultralytics.com
     Community: https://community.ultralytics.com
     GitHub: https://github.com/ultralytics/ultralytics
     """
 
 # Define keys for arg type checks
-CFG_FLOAT_KEYS = 'warmup_epochs', 'box', 'cls', 'dfl', 'degrees', 'shear', 'fl_gamma'
+CFG_FLOAT_KEYS = 'warmup_epochs', 'box', 'cls', 'dfl', 'degrees', 'shear'
 CFG_FRACTION_KEYS = ('dropout', 'iou', 'lr0', 'lrf', 'momentum', 'weight_decay', 'warmup_momentum', 'warmup_bias_lr',
                      'label_smoothing', 'hsv_h', 'hsv_s', 'hsv_v', 'translate', 'scale', 'perspective', 'flipud',
                      'fliplr', 'mosaic', 'mixup', 'copy_paste', 'conf', 'iou')  # fractional floats limited to 0.0 - 1.0
 CFG_INT_KEYS = ('epochs', 'patience', 'batch', 'workers', 'seed', 'close_mosaic', 'mask_ratio', 'max_det', 'vid_stride',
-                'line_thickness', 'workspace', 'nbs', 'save_period')
-CFG_BOOL_KEYS = ('save', 'exist_ok', 'pretrained', 'verbose', 'deterministic', 'single_cls', 'image_weights', 'rect',
-                 'cos_lr', 'overlap_mask', 'val', 'save_json', 'save_hybrid', 'half', 'dnn', 'plots', 'show',
-                 'save_txt', 'save_conf', 'save_crop', 'hide_labels', 'hide_conf', 'visualize', 'augment',
-                 'agnostic_nms', 'retina_masks', 'boxes', 'keras', 'optimize', 'int8', 'dynamic', 'simplify', 'nms',
-                 'v5loader')
-
-# Define valid tasks and modes
-TASKS = 'detect', 'segment', 'classify'
-MODES = 'train', 'val', 'predict', 'export', 'track', 'benchmark'
+                'line_width', 'workspace', 'nbs', 'save_period')
+CFG_BOOL_KEYS = ('save', 'exist_ok', 'verbose', 'deterministic', 'single_cls', 'rect', 'cos_lr', 'overlap_mask', 'val',
+                 'save_json', 'save_hybrid', 'half', 'dnn', 'plots', 'show', 'save_txt', 'save_conf', 'save_crop',
+                 'show_labels', 'show_conf', 'visualize', 'augment', 'agnostic_nms', 'retina_masks', 'boxes', 'keras',
+                 'optimize', 'int8', 'dynamic', 'simplify', 'nms', 'v5loader')
 
 
 def cfg2dict(cfg):
@@ -130,6 +140,25 @@ def get_cfg(cfg: Union[str, Path, Dict, SimpleNamespace] = DEFAULT_CFG_DICT, ove
     return IterableSimpleNamespace(**cfg)
 
 
+def _handle_deprecation(custom):
+    """
+    Hardcoded function to handle deprecated config keys
+    """
+
+    for key in custom.copy().keys():
+        if key == 'hide_labels':
+            deprecation_warn(key, 'show_labels')
+            custom['show_labels'] = custom.pop('hide_labels') == 'False'
+        if key == 'hide_conf':
+            deprecation_warn(key, 'show_conf')
+            custom['show_conf'] = custom.pop('hide_conf') == 'False'
+        if key == 'line_thickness':
+            deprecation_warn(key, 'line_width')
+            custom['line_width'] = custom.pop('line_thickness')
+
+    return custom
+
+
 def check_cfg_mismatch(base: Dict, custom: Dict, e=None):
     """
     This function checks for any mismatched keys between a custom configuration list and a base configuration list.
@@ -139,6 +168,7 @@ def check_cfg_mismatch(base: Dict, custom: Dict, e=None):
         - custom (Dict): a dictionary of custom configuration options
         - base (Dict): a dictionary of base configuration options
     """
+    custom = _handle_deprecation(custom)
     base, custom = (set(x.keys()) for x in (base, custom))
     mismatched = [x for x in custom if x not in base]
     if mismatched:
@@ -178,6 +208,51 @@ def merge_equals_args(args: List[str]) -> List[str]:
     return new_args
 
 
+def handle_yolo_hub(args: List[str]) -> None:
+    """
+    Handle Ultralytics HUB command-line interface (CLI) commands.
+
+    This function processes Ultralytics HUB CLI commands such as login and logout.
+    It should be called when executing a script with arguments related to HUB authentication.
+
+    Args:
+        args (List[str]): A list of command line arguments
+
+    Example:
+        python my_script.py hub login your_api_key
+    """
+    from ultralytics import hub
+
+    if args[0] == 'login':
+        key = args[1] if len(args) > 1 else ''
+        # Log in to Ultralytics HUB using the provided API key
+        hub.login(key)
+    elif args[0] == 'logout':
+        # Log out from Ultralytics HUB
+        hub.logout()
+
+
+def handle_yolo_settings(args: List[str]) -> None:
+    """
+    Handle YOLO settings command-line interface (CLI) commands.
+
+    This function processes YOLO settings CLI commands such as reset.
+    It should be called when executing a script with arguments related to YOLO settings management.
+
+    Args:
+        args (List[str]): A list of command line arguments for YOLO settings management.
+
+    Example:
+        python my_script.py yolo settings reset
+    """
+    path = USER_CONFIG_DIR / 'settings.yaml'  # get SETTINGS YAML file path
+    if any(args) and args[0] == 'reset':
+        path.unlink()  # delete the settings file
+        get_settings()  # create new settings
+        LOGGER.info('Settings reset successfully')  # inform the user that settings have been reset
+    yaml_print(path)  # print the current settings
+
+
 def entrypoint(debug=''):
     """
     This function is the ultralytics package entrypoint, it's responsible for parsing the command line arguments passed
@@ -202,8 +277,10 @@ def entrypoint(debug=''):
         'help': lambda: LOGGER.info(CLI_HELP_MSG),
         'checks': checks.check_yolo,
         'version': lambda: LOGGER.info(__version__),
-        'settings': lambda: yaml_print(USER_CONFIG_DIR / 'settings.yaml'),
+        'settings': lambda: handle_yolo_settings(args[1:]),
         'cfg': lambda: yaml_print(DEFAULT_CFG_PATH),
+        'hub': lambda: handle_yolo_hub(args[1:]),
+        'login': lambda: handle_yolo_hub(args),
         'copy-cfg': copy_default_cfg}
     full_args_dict = {**DEFAULT_CFG_DICT, **{k: None for k in TASKS}, **{k: None for k in MODES}, **special}
 
@@ -246,8 +323,8 @@ def entrypoint(debug=''):
             overrides['task'] = a
         elif a in MODES:
             overrides['mode'] = a
-        elif a in special:
-            special[a]()
+        elif a.lower() in special:
+            special[a.lower()]()
             return
         elif a in DEFAULT_CFG_DICT and isinstance(DEFAULT_CFG_DICT[a], bool):
             overrides[a] = True  # auto-True for default bool args, i.e. 'yolo show' sets show=True
@@ -274,8 +351,11 @@ def entrypoint(debug=''):
 
     # Task
     task = overrides.pop('task', None)
-    if task and task not in TASKS:
-        raise ValueError(f"Invalid 'task={task}'. Valid tasks are {TASKS}.\n{CLI_HELP_MSG}")
+    if task:
+        if task not in TASKS:
+            raise ValueError(f"Invalid 'task={task}'. Valid tasks are {TASKS}.\n{CLI_HELP_MSG}")
+        if 'model' not in overrides:
+            overrides['model'] = TASK2MODEL[task]
 
     # Model
     model = overrides.pop('model', DEFAULT_CFG.model)
@@ -285,22 +365,24 @@ def entrypoint(debug=''):
     from ultralytics.yolo.engine.model import YOLO
     overrides['model'] = model
     model = YOLO(model, task=task)
+    if isinstance(overrides.get('pretrained'), str):
+        model.load(overrides['pretrained'])
 
     # Task Update
-    if task and task != model.task:
-        LOGGER.warning(f"WARNING ⚠️ conflicting 'task={task}' passed with 'task={model.task}' model. "
-                       f"Ignoring 'task={task}' and updating to 'task={model.task}' to match model.")
+    if task != model.task:
+        if task:
+            LOGGER.warning(f"WARNING ⚠️ conflicting 'task={task}' passed with 'task={model.task}' model. "
+                           f"Ignoring 'task={task}' and updating to 'task={model.task}' to match model.")
         task = model.task
 
     # Mode
-    if mode in {'predict', 'track'} and 'source' not in overrides:
+    if mode in ('predict', 'track') and 'source' not in overrides:
         overrides['source'] = DEFAULT_CFG.source or ROOT / 'assets' if (ROOT / 'assets').exists() \
             else 'https://ultralytics.com/images/bus.jpg'
         LOGGER.warning(f"WARNING ⚠️ 'source' is missing. Using default 'source={overrides['source']}'.")
     elif mode in ('train', 'val'):
         if 'data' not in overrides:
-            task2data = dict(detect='coco128.yaml', segment='coco128-seg.yaml', classify='imagenet100')
-            overrides['data'] = task2data.get(task or DEFAULT_CFG.task, DEFAULT_CFG.data)
+            overrides['data'] = TASK2DATA.get(task or DEFAULT_CFG.task, DEFAULT_CFG.data)
             LOGGER.warning(f"WARNING ⚠️ 'data' is missing. Using default 'data={overrides['data']}'.")
     elif mode == 'export':
         if 'format' not in overrides:
@@ -314,6 +396,7 @@ def entrypoint(debug=''):
 
 # Special modes --------------------------------------------------------------------------------------------------------
 def copy_default_cfg():
+    """Copy and create a new default configuration file with '_copy' appended to its name."""
     new_file = Path.cwd() / DEFAULT_CFG_PATH.name.replace('.yaml', '_copy.yaml')
     shutil.copy2(DEFAULT_CFG_PATH, new_file)
     LOGGER.info(f'{DEFAULT_CFG_PATH} copied to {new_file}\n'
@@ -321,5 +404,5 @@ def copy_default_cfg():
 
 
 if __name__ == '__main__':
-    # entrypoint(debug='yolo predict model=yolov8n.pt')
+    # Example Usage: entrypoint(debug='yolo predict model=yolov8n.pt')
     entrypoint(debug='')

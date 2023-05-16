@@ -1,4 +1,4 @@
-# Ultralytics YOLO 🚀, GPL-3.0 license
+# Ultralytics YOLO 🚀, AGPL-3.0 license
 
 from pathlib import Path
 
@@ -49,6 +49,9 @@ def test_predict_dir():
 
 def test_predict_img():
     model = YOLO(MODEL)
+    seg_model = YOLO('yolov8n-seg.pt')
+    cls_model = YOLO('yolov8n-cls.pt')
+    pose_model = YOLO('yolov8n-pose.pt')
     im = cv2.imread(str(SOURCE))
     assert len(model(source=Image.open(SOURCE), save=True, verbose=True)) == 1  # PIL
     assert len(model(source=im, save=True, save_txt=True)) == 1  # ndarray
@@ -62,7 +65,21 @@ def test_predict_img():
         cv2.imread(str(SOURCE)),  # OpenCV
         Image.open(SOURCE),  # PIL
         np.zeros((320, 640, 3))]  # numpy
-    assert len(model(batch)) == len(batch)  # multiple sources in a batch
+    assert len(model(batch, visualize=True)) == len(batch)  # multiple sources in a batch
+
+    # Test tensor inference
+    im = cv2.imread(str(SOURCE))  # OpenCV
+    t = cv2.resize(im, (32, 32))
+    t = torch.from_numpy(t.transpose((2, 0, 1)))
+    t = torch.stack([t, t, t, t])
+    results = model(t, visualize=True)
+    assert len(results) == t.shape[0]
+    results = seg_model(t, visualize=True)
+    assert len(results) == t.shape[0]
+    results = cls_model(t, visualize=True)
+    assert len(results) == t.shape[0]
+    results = pose_model(t, visualize=True)
+    assert len(results) == t.shape[0]
 
 
 def test_predict_grey_and_4ch():
@@ -80,6 +97,13 @@ def test_val():
 def test_val_scratch():
     model = YOLO(CFG)
     model.val(data='coco8.yaml', imgsz=32)
+
+
+def test_amp():
+    if torch.cuda.is_available():
+        from ultralytics.yolo.engine.trainer import check_amp
+        model = YOLO(MODEL).model.cuda()
+        assert check_amp(model)
 
 
 def test_train_scratch():
@@ -149,7 +173,7 @@ def test_export_paddle(enabled=False):
 
 
 def test_all_model_yamls():
-    for m in list((ROOT / 'models').rglob('*.yaml')):
+    for m in list((ROOT / 'models').rglob('yolo*.yaml')):
         YOLO(m.name)
 
 
@@ -164,7 +188,7 @@ def test_workflow():
 def test_predict_callback_and_setup():
     # test callback addition for prediction
     def on_predict_batch_end(predictor):  # results -> List[batch_size]
-        path, _, im0s, _, _ = predictor.batch
+        path, im0s, _, _ = predictor.batch
         # print('on_predict_batch_end', im0s[0].shape)
         im0s = im0s if isinstance(im0s, list) else [im0s]
         bs = [predictor.dataset.bs for _ in range(len(path))]
@@ -173,7 +197,7 @@ def test_predict_callback_and_setup():
     model = YOLO(MODEL)
     model.add_callback('on_predict_batch_end', on_predict_batch_end)
 
-    dataset = load_inference_source(source=SOURCE, transforms=model.transforms)
+    dataset = load_inference_source(source=SOURCE)
     bs = dataset.bs  # noqa access predictor properties
     results = model.predict(dataset, stream=True)  # source already setup
     for _, (result, im0, bs) in enumerate(results):
@@ -184,18 +208,41 @@ def test_predict_callback_and_setup():
 
 
 def test_result():
+    model = YOLO('yolov8n-pose.pt')
+    res = model([SOURCE, SOURCE])
+    res[0].plot(conf=True, boxes=False)
+    res[0].plot(pil=True)
+    res[0] = res[0].cpu().numpy()
+    print(res[0].path, res[0].keypoints)
+
     model = YOLO('yolov8n-seg.pt')
     res = model([SOURCE, SOURCE])
-    res[0].cpu().numpy()
-    res[0].plot(show_conf=False)
-    print(res[0].path)
+    res[0].plot(conf=True, boxes=False, masks=True)
+    res[0].plot(pil=True)
+    res[0] = res[0].cpu().numpy()
+    print(res[0].path, res[0].masks.data)
 
     model = YOLO('yolov8n.pt')
     res = model(SOURCE)
+    res[0].plot(pil=True)
     res[0].plot()
+    res[0] = res[0].cpu().numpy()
     print(res[0].path)
 
     model = YOLO('yolov8n-cls.pt')
     res = model(SOURCE)
+    res[0].plot(probs=False)
+    res[0].plot(pil=True)
     res[0].plot()
+    res[0] = res[0].cpu().numpy()
     print(res[0].path)
+
+
+def test_track():
+    im = cv2.imread(str(SOURCE))
+    model = YOLO(MODEL)
+    seg_model = YOLO('yolov8n-seg.pt')
+    pose_model = YOLO('yolov8n-pose.pt')
+    model.track(source=im)
+    seg_model.track(source=im)
+    pose_model.track(source=im)

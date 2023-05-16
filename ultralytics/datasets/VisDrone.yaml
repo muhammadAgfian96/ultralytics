@@ -1,8 +1,8 @@
-# Ultralytics YOLO 🚀, GPL-3.0 license
+# Ultralytics YOLO 🚀, AGPL-3.0 license
 # VisDrone2019-DET dataset https://github.com/VisDrone/VisDrone-Dataset by Tianjin University
 # Example usage: yolo train data=VisDrone.yaml
 # parent
-# ├── yolov5
+# ├── ultralytics
 # └── datasets
 #     └── VisDrone  ← downloads here (2.3 GB)
 
@@ -56,7 +56,7 @@ download: |
                   cls = int(row[5]) - 1
                   box = convert_box(img_size, tuple(map(int, row[:4])))
                   lines.append(f"{cls} {' '.join(f'{x:.6f}' for x in box)}\n")
-                  with open(str(f).replace(os.sep + 'annotations' + os.sep, os.sep + 'labels' + os.sep), 'w') as fl:
+                  with open(str(f).replace(f'{os.sep}annotations{os.sep}', f'{os.sep}labels{os.sep}'), 'w') as fl:
                       fl.writelines(lines)  # write label.txt
 
 
