@@ -1,6 +1,7 @@
 # Ultralytics YOLO 🚀, AGPL-3.0 license
 
 import re
+import os
 
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
@@ -140,4 +141,4 @@ callbacks = {
     'on_train_epoch_end': on_train_epoch_end,
     'on_fit_epoch_end': on_fit_epoch_end,
     'on_val_end': on_val_end,
-    'on_train_end': on_train_end} if clearml else {}
+    'on_train_end': on_train_end} if clearml and os.getenv('ENABLE_DEFAULT_CLEARML_CALLBACKS', 'true').lower() == 'true' else {}
